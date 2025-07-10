@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Digital Writer's Room</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/showdown/dist/showdown.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f9fafb; /* gray-50 */
+            --editor-bg: #ffffff;
+            --sidebar-bg: #ffffff;
+            --border-color: #e5e7eb; /* gray-200 */
+            --text-primary: #111827; /* gray-900 */
+            --text-secondary: #4b5563; /* gray-600 */
+            --text-muted: #9ca3af; /* gray-400 */
+            --accent-color: #8b5cf6; /* NEW: violet-500 */
+            --accent-color-light: #ede9fe; /* NEW: violet-100 */
+            --accent-text-dark: #6d28d9; /* NEW: violet-700 */
+            --suggestion-bg: #fef9c3; /* yellow-100 */
+            --suggestion-border: #f59e0b; /* amber-500 */
+            --danger-color: #ef4444; /* red-500 */
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow: hidden; /* Prevent body scroll */
+        }
+        
+        /* Custom Selection Highlight Color */
+        ::selection {
+            background-color: var(--accent-color-light);
+            color: var(--text-primary);
+        }
+        ::-moz-selection { /* Firefox */
+            background-color: var(--accent-color-light);
+            color: var(--text-primary);
+        }
+
+        /* Custom Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #d1d5db; /* gray-300 */
+            border-radius: 10px;
+            border: 2px solid var(--bg-color);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #9ca3af; /* gray-400 */
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            height: 100vh;
+        }
+        @media (min-width: 1024px) {
+            .main-container {
+                grid-template-columns: minmax(0, 2fr) minmax(380px, 1fr);
+            }
+        }
+        
+        /* Editor Panel */
+        #editor-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--editor-bg);
+        }
+        #editor-wrapper {
+            flex-grow: 1;
+            position: relative;
+            overflow-y: auto;
+            padding: 0 1rem; /* Reduced horizontal padding */
+        }
+        #editor-column {
+            max-width: 740px;
+            margin: 0 auto;
+            padding: 2rem 0;
+        }
+        #doc-title {
+            width: 100%;
+            font-size: 2.5rem; /* Slightly larger title */
+            font-weight: 700;
+            border: none;
+            padding: 1rem 0;
+            margin-bottom: 1.5rem;
+            background: transparent;
+        }
+        #doc-title:focus { outline: none; }
+        .ql-toolbar { display: none !important; }
+        .ql-container { border: none !important; }
+        .ql-editor {
+            min-height: 80vh;
+            font-size: 1.1rem;
+            line-height: 1.75;
+            color: var(--text-primary);
+            padding: 0;
+        }
+        .ql-editor.ql-blank::before { color: var(--text-muted); font-style: normal; }
+        
+        /* AI Suggestion Styling */
+        .ai-suggestion {
+            background-color: var(--suggestion-bg);
+            border-bottom: 2px dotted var(--suggestion-border);
+            cursor: pointer;
+        }
+        #suggestion-toolbar {
+            position: absolute;
+            background-color: var(--text-primary);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        #suggestion-toolbar button {
+            background: transparent;
+            border: none;
+            color: white;
+            font-weight: 500;
+            font-size: 0.875rem;
+            padding: 0.25rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        #suggestion-toolbar button:hover { background-color: rgba(255,255,255,0.2); }
+
+        /* AI Side Panel */
+        #ai-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--sidebar-bg);
+            border-left: 1px solid var(--border-color);
+            padding: 1.5rem;
+        }
+        #ai-output-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-bottom: 1rem;
+        }
+        #chat-form-wrapper { position: relative; margin-top: 1rem; }
+        #chat-input {
+            width: 100%;
+            padding: 0.75rem 3rem 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            background-color: var(--editor-bg);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s ease-in-out;
+        }
+        #chat-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-color); }
+        #send-btn {
+            position: absolute;
+            top: 50%;
+            right: 0.5rem;
+            transform: translateY(-50%);
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 0.375rem;
+            border-radius: 0.5rem;
+            transition: background-color 0.2s;
+        }
+        #send-btn:hover { background-color: #7c3aed; /* violet-600 */ }
+        #send-btn:disabled { background-color: #c4b5fd; /* violet-300 */ cursor: not-allowed; }
+
+        /* Agent Tools */
+        #tools-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        .tool-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 0.5rem;
+            border-radius: 0.75rem;
+            font-weight: 500;
+            font-size: 0.875rem;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .tool-btn:hover, .tool-btn.active {
+            background-color: var(--accent-color-light);
+            border-color: var(--accent-color);
+            color: var(--accent-text-dark);
+        }
+        .tool-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* AI Output Card */
+        .ai-output-card {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background-color: var(--editor-bg);
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+            animation: fadeIn 0.5s ease-out;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .ai-output-card.is-processing {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px var(--accent-color-light);
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .agent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+        .agent-name {
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .output-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .output-actions button {
+            padding: 0.25rem;
+            color: var(--text-secondary);
+            border-radius: 0.25rem;
+        }
+        .output-actions button:hover {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+        }
+        .ai-output-content {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .ai-output-content p { margin-bottom: 0.75rem; }
+        .ai-output-content ul { list-style-position: inside; margin-left: 0.5rem; margin-bottom: 0.75rem; }
+        .ai-output-content li { margin-bottom: 0.25rem; }
+        .ai-output-content blockquote {
+            border-left: 3px solid var(--accent-color);
+            padding-left: 1rem;
+            margin-left: 0.5rem;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        
+        /* Modal Styles */
+        #modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        #modal-overlay:not(.hidden) {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #modal-panel {
+            background-color: var(--editor-bg);
+            border-radius: 1rem;
+            padding: 2rem;
+            width: 90%;
+            max-width: 800px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        #modal-overlay:not(.hidden) #modal-panel {
+            transform: scale(1);
+        }
+        #modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+        #modal-content {
+            flex-grow: 1;
+            overflow-y: auto;
+            line-height: 1.7;
+        }
+        #modal-close-btn {
+            padding: 0.5rem;
+            color: var(--text-muted);
+        }
+        #modal-close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-secondary);
+        }
+        .loading-spinner {
+            border: 2px solid rgba(0,0,0,0.1);
+            border-top: 2px solid var(--text-primary);
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Utility classes */
+        .hidden { display: none !important; }
+
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Editor Panel -->
+        <main id="editor-panel">
+            <div id="editor-wrapper">
+                <div id="editor-column">
+                    <input type="text" id="doc-title" placeholder="Untitled Story">
+                    <div id="editor"></div>
+                </div>
+                <div id="suggestion-toolbar" class="hidden">
+                    <button id="suggestion-accept" title="Accept Suggestion">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Accept
+                    </button>
+                    <button id="suggestion-reject" title="Reject Suggestion">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        Reject
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- AI Side Panel -->
+        <aside id="ai-panel">
+            <h2 class="text-lg font-bold mb-4">The Creative Crew</h2>
+            <div id="tools-grid">
+                <!-- Agent buttons will be dynamically generated here -->
+            </div>
+            
+            <div id="selected-text-card" class="ai-output-card hidden">
+                <div class="agent-header">
+                    <p class="agent-name" style="color: var(--text-secondary);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        Selected Text
+                    </p>
+                    <div class="output-actions">
+                        <button id="clear-selection-btn" title="Clear Selection">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="selected-text-content" class="ai-output-content"></div>
+            </div>
+
+            <div id="ai-output-container">
+                <!-- AI output cards will be appended here -->
+                <div id="output-placeholder" class="flex flex-col items-center justify-center h-full text-center text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mb-4"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                    <p class="font-medium">AI responses will appear here.</p>
+                    <p class="text-sm">Select an agent and give it a prompt below.</p>
+                </div>
+            </div>
+
+            <form id="chat-form">
+                <div id="chat-form-wrapper">
+                    <input type="text" id="chat-input" placeholder="Ask an agent, or type '/' for commands..." autocomplete="off">
+                    <button id="send-btn" type="submit" title="Send" disabled>
+                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                    </button>
+                </div>
+            </form>
+        </aside>
+    </div>
+
+    <!-- Modal Structure -->
+    <div id="modal-overlay" class="hidden">
+        <div id="modal-panel">
+            <div id="modal-header">
+                <h3 id="modal-title" class="text-lg font-bold agent-name"></h3>
+                <button id="modal-close-btn" title="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        // --- Agent Definitions ---
+        const agents = {
+            "Orchestrator": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c7.2 0 9 1.8 9 9s-1.8 9-9 9-9-1.8-9-9 1.8-9 9-9Z"/><path d="M12 8v8"/><path d="M15 7.5c.75.5 1.5 1.5 1.5 2.5s-.75 2-1.5 2.5"/><path d="M9 7.5c-.75.5-1.5 1.5-1.5 2.5s.75 2 1.5 2.5"/></svg>`,
+                description: "The showrunner. Give a high-level goal and it delegates to the right agent.",
+                defaultPrompt: "Draft Chapter 5, focusing on the protagonist's discovery of the hidden artifact.",
+                isOrchestrator: true,
+            },
+            "Brainstormer": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12h.01"/><path d="M17.3 7.7a9 9 0 1 0-10.6 10.6"/><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z"/></svg>`,
+                description: "The Muse. Generates ideas, themes, and plot twists.",
+                defaultPrompt: "Generate 5 character concepts for a space opera.",
+            },
+            "Lorekeeper": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
+                description: "The World-Builder. Creates and manages history, rules, and geography.",
+                defaultPrompt: "Develop a basic magic system based on elemental runes.",
+            },
+            "Character Actor": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>`,
+                description: "Embodies a character, simulating their dialogue and actions.",
+                defaultPrompt: "You are a cynical, veteran detective. Write a short, dramatic scene with an idealistic rookie at a grim crime scene.",
+            },
+            "Stylist": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6h6"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5L2.5 21.5l4.5-1.338A9.955 9.955 0 0 0 12 22Z"/></svg>`,
+                description: "The Voice Coach. Refines text for style, tone, and impact.",
+                context: "selection",
+                directEdit: true,
+                promptTemplate: "You are a writing stylist. Revise the following text to be more concise and impactful. Output ONLY the revised text, without any extra commentary or quotation marks."
+            },
+            "Continuity": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.59a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
+                description: "The Script Supervisor. Checks for inconsistencies in the plot.",
+                context: "full",
+                promptTemplate: "As a continuity agent, analyze the following text for inconsistencies, plot holes, or contradictions. List your findings clearly."
+            },
+            "Fact-Checker": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
+                description: "Verifies factual claims or internal consistency.",
+                context: "selection",
+                promptTemplate: "As a fact-checker, verify the factual claims in the following text. For fiction, check for internal consistency against established lore. Report your findings."
+            },
+            "Audience Sim": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+                description: "Virtual Focus Group. Provides feedback from a reader's perspective.",
+                context: "selection",
+                promptTemplate: "I am a 'Hardcore Fantasy Fan'. Read the following text and provide feedback on pacing, clarity, and emotional impact from my perspective."
+            }
+        };
+
+        // --- Quill & Suggestion Blot Setup ---
+        let Inline = Quill.import('blots/inline');
+        class SuggestionBlot extends Inline {
+          static create() {
+            let node = super.create();
+            node.setAttribute('class', 'ai-suggestion');
+            return node;
+          }
+        }
+        SuggestionBlot.blotName = 'suggestion';
+        SuggestionBlot.tagName = 'span';
+        Quill.register(SuggestionBlot);
+
+        const quill = new Quill('#editor', {
+            theme: 'snow',
+            modules: { toolbar: false },
+            placeholder: 'Start your story here. Use the AI Creative Crew on the right to help you write...'
+        });
+
+        // --- Gemini API & Core Logic ---
+        const API_KEY = "AIzaSyCTyBJ5dQZoWWgB14Wjd0l7heigxDRT-qs"; // Test key
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+        const showdownConverter = new showdown.Converter();
+
+        async function callGemini(prompt) {
+            const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            const result = await response.json();
+            if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts) {
+                return result.candidates[0].content.parts[0].text;
+            }
+            if (result.promptFeedback && result.promptFeedback.blockReason) {
+                 throw new Error(`Request blocked: ${result.promptFeedback.blockReason}`);
+            }
+            throw new Error("Unexpected API response structure.");
+        }
+        
+        // --- UI Elements ---
+        const chatInput = document.getElementById('chat-input');
+        const chatForm = document.getElementById('chat-form');
+        const sendBtn = document.getElementById('send-btn');
+        const toolsGrid = document.getElementById('tools-grid');
+        const outputContainer = document.getElementById('ai-output-container');
+        const outputPlaceholder = document.getElementById('output-placeholder');
+        const suggestionToolbar = document.getElementById('suggestion-toolbar');
+        const suggestionAcceptBtn = document.getElementById('suggestion-accept');
+        const suggestionRejectBtn = document.getElementById('suggestion-reject');
+        const selectedTextCard = document.getElementById('selected-text-card');
+        const selectedTextContent = document.getElementById('selected-text-content');
+        const clearSelectionBtn = document.getElementById('clear-selection-btn');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+
+        // --- State Management ---
+        let activeAgentName = 'Orchestrator';
+        let activeSuggestion = { range: null, originalText: null, blot: null };
+        let lastKnownSelection = { range: null, text: '' };
+        let isGenerating = false;
+
+        // --- UI Initialization ---
+        function initializeAgents() {
+            toolsGrid.innerHTML = '';
+            for (const agentName in agents) {
+                const agent = agents[agentName];
+                const button = document.createElement('button');
+                button.className = 'tool-btn';
+                if (agentName === activeAgentName) button.classList.add('active');
+                button.dataset.agent = agentName;
+                button.title = agent.description;
+                button.innerHTML = `
+                    ${agent.icon}
+                    <span>${agentName}</span>
+                `;
+                button.addEventListener('click', () => selectAgent(agentName));
+                toolsGrid.appendChild(button);
+            }
+        }
+
+        function selectAgent(agentName) {
+            activeAgentName = agentName;
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.agent === agentName);
+            });
+            const agent = agents[agentName];
+            chatInput.placeholder = agent.defaultPrompt || `Ask ${agentName}...`;
+            updateSendButtonState();
+            
+            // Auto-trigger context-based agents
+            if (agent.context) {
+                handleAgentAction(agentName);
+            }
+        }
+
+        function updateSendButtonState() {
+            const agent = agents[activeAgentName];
+            const canSend = !agent.context && !isGenerating;
+            sendBtn.disabled = !canSend;
+        }
+
+        // --- UI Interaction Logic ---
+        function createOutputCard(agentName, content, isHtml = false) {
+            outputPlaceholder.classList.add('hidden');
+            const cardId = `card-${Date.now()}`;
+            const card = document.createElement('div');
+            card.className = 'ai-output-card';
+            card.id = cardId;
+            const cardContent = isHtml ? content : showdownConverter.makeHtml(content);
+
+            let agentHeaderHTML;
+            const isSystemMessage = agentName === 'System' || agentName === 'System Error';
+
+            if (isSystemMessage) {
+                const systemIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+                agentHeaderHTML = `
+                    <div class="agent-header">
+                        <p class="agent-name" style="color: ${agentName === 'System Error' ? 'var(--danger-color)' : 'var(--text-secondary)'};">
+                            ${systemIcon} ${agentName}
+                        </p>
+                    </div>
+                `;
+            } else {
+                agentHeaderHTML = `
+                    <div class="agent-header">
+                        <p class="agent-name">${agents[agentName].icon} ${agentName}</p>
+                        <div class="output-actions">
+                            <button title="Expand" data-action="expand" data-target="${cardId}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            </button>
+                            <button title="Insert at Cursor" data-action="insert" data-target="${cardId}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></svg>
+                            </button>
+                            <button title="Copy Text" data-action="copy" data-target="${cardId}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                            </button>
+                            <button title="Remove" data-action="remove" data-target="${cardId}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                ${agentHeaderHTML}
+                <div class="ai-output-content">${cardContent}</div>
+            `;
+            outputContainer.appendChild(card);
+            card.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+            // Add event listeners for the new buttons, only if it's not a system message
+            if (!isSystemMessage) {
+                card.querySelector('[data-action="expand"]').addEventListener('click', (e) => {
+                    modalTitle.innerHTML = card.querySelector('.agent-name').innerHTML;
+                    modalContent.innerHTML = card.querySelector('.ai-output-content').innerHTML;
+                    modalOverlay.classList.remove('hidden');
+                });
+                card.querySelector('[data-action="insert"]').addEventListener('click', (e) => {
+                    const textToInsert = card.querySelector('.ai-output-content').innerText;
+                    quill.insertText(quill.getSelection(true).index, `\n\n${textToInsert}\n\n`, 'user');
+                });
+                card.querySelector('[data-action="copy"]').addEventListener('click', (e) => {
+                    const textToCopy = card.querySelector('.ai-output-content').innerText;
+                    navigator.clipboard.writeText(textToCopy);
+                });
+                card.querySelector('[data-action="remove"]').addEventListener('click', (e) => {
+                    card.remove();
+                });
+            }
+            return card;
+        }
+
+        function showLoading(agentName) {
+            const loadingHTML = `<div class="loading-indicator"><div class="loading-spinner"></div><span>${agentName} is thinking...</span></div>`;
+            return createOutputCard(agentName, loadingHTML, true);
+        }
+        
+        // --- Suggestion & Selection Toolbar Logic ---
+        quill.on('selection-change', (range, oldRange, source) => {
+            // This event should only react to what the user is doing.
+            if (source === 'user') {
+                if (range && range.length > 0) {
+                    const text = quill.getText(range.index, range.length);
+                    lastKnownSelection = { range, text };
+                    selectedTextContent.innerText = text;
+                    selectedTextCard.classList.remove('hidden');
+                } else if (range && range.length === 0) {
+                    // User clicked in the editor, clearing the selection
+                    lastKnownSelection = { range: null, text: '' };
+                    selectedTextCard.classList.add('hidden');
+                }
+                // If range is null (editor lost focus), we do nothing, preserving the last known selection.
+            }
+
+            // Handle suggestion toolbar separately, only for cursor positions
+            if (range && range.length === 0) {
+                const [blot, offset] = quill.getLeaf(range.index);
+                if (blot && blot.statics.blotName === 'suggestion') {
+                    const blotBounds = quill.getBounds(range.index, 0);
+                    suggestionToolbar.style.top = `${blotBounds.top - suggestionToolbar.offsetHeight - 8}px`;
+                    suggestionToolbar.style.left = `${blotBounds.left}px`;
+                    suggestionToolbar.classList.remove('hidden');
+                    activeSuggestion.blot = blot;
+                } else {
+                    suggestionToolbar.classList.add('hidden');
+                }
+            } else {
+                suggestionToolbar.classList.add('hidden');
+            }
+        });
+
+
+        clearSelectionBtn.addEventListener('click', () => {
+            lastKnownSelection = { range: null, text: '' };
+            selectedTextCard.classList.add('hidden');
+            quill.setSelection(null); // Remove selection from editor
+        });
+
+        suggestionAcceptBtn.addEventListener('click', () => {
+            if (activeSuggestion.blot) {
+                const offset = activeSuggestion.blot.offset(quill.scroll);
+                const length = activeSuggestion.blot.length();
+                quill.formatText(offset, length, 'suggestion', false, 'user');
+                suggestionToolbar.classList.add('hidden');
+                activeSuggestion = {};
+            }
+        });
+        
+        suggestionRejectBtn.addEventListener('click', () => {
+            if (activeSuggestion.blot && activeSuggestion.originalText) {
+                const offset = activeSuggestion.blot.offset(quill.scroll);
+                const length = activeSuggestion.blot.length();
+                quill.deleteText(offset, length, 'user');
+                quill.insertText(offset, activeSuggestion.originalText, 'user');
+                suggestionToolbar.classList.add('hidden');
+                activeSuggestion = {};
+            }
+        });
+
+        // --- Main Agent Logic ---
+        async function handleAgentAction(agentName, userInput = '') {
+            const agent = agents[agentName];
+            let prompt = userInput || agent.defaultPrompt;
+            let selectionRange, originalText;
+
+            // Handle context-based agents (Stylist, Continuity, etc.)
+            if (agent.context) {
+                // Use the stored selection, NOT the live one, for robustness
+                if (lastKnownSelection.range && lastKnownSelection.range.length > 0) {
+                    selectionRange = lastKnownSelection.range;
+                    originalText = lastKnownSelection.text;
+                } else { // Otherwise, use the full document text.
+                    originalText = quill.getText();
+                    selectionRange = { index: 0, length: originalText.length };
+                    if (!originalText.trim()) {
+                       createOutputCard('System', `<p>The document is empty. The <strong>${agentName}</strong> agent needs some content to work with.</p>`, true);
+                       return;
+                    }
+                }
+                prompt = `${agent.promptTemplate}\n\n---\n\n${originalText}`;
+            }
+
+            isGenerating = true;
+            if (agent.context && lastKnownSelection.range) {
+                selectedTextCard.classList.add('is-processing');
+            }
+            updateSendButtonState();
+            chatInput.disabled = true;
+            const loadingCard = showLoading(agentName);
+
+            try {
+                const response = await callGemini(prompt);
+                loadingCard.remove(); // Remove loading indicator
+
+                if (agent.directEdit) {
+                    quill.deleteText(selectionRange.index, selectionRange.length, 'user');
+                    activeSuggestion.originalText = originalText;
+                    quill.format('suggestion', true);
+                    quill.insertText(selectionRange.index, response, 'user');
+                    quill.format('suggestion', false);
+                    quill.setSelection(selectionRange.index, response.length, 'user');
+                    quill.formatText(selectionRange.index, response.length, 'suggestion', true, 'user');
+                } else {
+                    createOutputCard(agentName, response);
+                }
+            } catch (error) {
+                loadingCard.remove();
+                createOutputCard('System Error', `<strong class="text-red-500">Error:</strong> ${error.message}`, true);
+            } finally {
+                isGenerating = false;
+                if (agent.context) {
+                    selectedTextCard.classList.remove('is-processing');
+                }
+                chatInput.disabled = false;
+                updateSendButtonState();
+                chatInput.focus();
+            }
+        }
+        
+        // --- Orchestrator (Chat) Logic ---
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userInput = chatInput.value.trim();
+            if (!userInput || isGenerating) return;
+            
+            chatInput.value = '';
+            
+            if (activeAgentName === 'Orchestrator') {
+                const orchestrationPrompt = `You are an orchestrator for a multi-agent writing assistant. Analyze the user's request and determine which agent should handle it and what the specific prompt for that agent should be. The available agents are: [${Object.keys(agents).filter(a => a !== 'Orchestrator').join(', ')}]. Respond with ONLY a JSON object in the format: {"agent": "AGENT_NAME", "prompt": "prompt_for_the_agent"}. User request: "${userInput}"`;
+                
+                isGenerating = true;
+                updateSendButtonState();
+                chatInput.disabled = true;
+                const loadingCard = showLoading('Orchestrator');
+                
+                try {
+                    let orchestratorResponseText = await callGemini(orchestrationPrompt);
+                    orchestratorResponseText = orchestratorResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const { agent: specialistAgent, prompt: specialistPrompt } = JSON.parse(orchestratorResponseText);
+                    
+                    loadingCard.remove();
+                    selectAgent(specialistAgent);
+                    // Do not await here, let it run.
+                    handleAgentAction(specialistAgent, specialistPrompt).finally(() => {
+                        selectAgent('Orchestrator'); // Return to orchestrator after completion
+                    });
+
+                } catch (error) {
+                    loadingCard.remove();
+                    createOutputCard('System Error', `<strong class="text-red-500">Orchestration Error:</strong> ${error.message}`, true);
+                    isGenerating = false;
+                    updateSendButtonState();
+                    chatInput.disabled = false;
+                    chatInput.focus();
+                }
+            } else {
+                handleAgentAction(activeAgentName, userInput);
+            }
+        });
+
+        // --- Modal Logic ---
+        function closeModal() {
+            modalOverlay.classList.add('hidden');
+        }
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                closeModal();
+            }
+        });
+        modalCloseBtn.addEventListener('click', closeModal);
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeAgents();
+            selectAgent('Orchestrator');
+            quill.focus();
+        });
+    </script>
+</body>
+</html>
