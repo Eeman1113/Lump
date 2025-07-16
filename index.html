@@ -461,6 +461,11 @@
                 description: "Embodies a character, simulating their dialogue and actions.",
                 defaultPrompt: "You are a cynical, veteran detective. Write a short, dramatic scene with an idealistic rookie at a grim crime scene.",
             },
+            "Story Writer": {
+                icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="m16 16-4-4"/><path d="m13.5 5.5 4 4"/></svg>`,
+                description: "The Narrator. Writes a story or continues the narrative based on a prompt or selected text.",
+                defaultPrompt: "Write a short story about a mysterious traveler arriving in a small, isolated town.",
+            },
             "Stylist": {
                 icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v6h6"/><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12c0 1.821.487 3.53 1.338 5L2.5 21.5l4.5-1.338A9.955 9.955 0 0 0 12 22Z"/></svg>`,
                 description: "The Voice Coach. Refines text for style, tone, and impact.",
@@ -508,7 +513,7 @@
         });
 
         // --- Gemini API & Core Logic ---
-        const API_KEY = "AIzaSyCYBdYx4vcLbZBXlmJ32EKCCNuKA-TdFoY"; // Test key
+        const API_KEY = ""; // Your API Key here. Leave blank to use the environment's key.
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
         const showdownConverter = new showdown.Converter();
 
@@ -739,18 +744,24 @@
             let prompt = userInput || agent.defaultPrompt;
             let selectionRange, originalText;
 
+            // Prepend selected text as context if it exists for agents that aren't 'context-only'.
+            // 'context-only' agents have their own specific templates for handling context.
+            if (!agent.context && lastKnownSelection.text.trim()) {
+                prompt = `I have selected the following text from my document for context:\n\n---\n${lastKnownSelection.text}\n---\n\nBased on this context, and my request below, please provide a response.\n\nRequest: ${prompt}`;
+            }
+
             // Handle context-based agents (Stylist, Continuity, etc.)
             if (agent.context) {
                 // Use the stored selection, NOT the live one, for robustness
-                if (lastKnownSelection.range && lastKnownSelection.range.length > 0) {
+                if (agent.context === 'selection' && lastKnownSelection.range && lastKnownSelection.range.length > 0) {
                     selectionRange = lastKnownSelection.range;
                     originalText = lastKnownSelection.text;
                 } else { // Otherwise, use the full document text.
                     originalText = quill.getText();
                     selectionRange = { index: 0, length: originalText.length };
                     if (!originalText.trim()) {
-                       createOutputCard('System', `<p>The document is empty. The <strong>${agentName}</strong> agent needs some content to work with.</p>`, true);
-                       return;
+                        createOutputCard('System', `<p>The document is empty. The <strong>${agentName}</strong> agent needs some content to work with.</p>`, true);
+                        return;
                     }
                 }
                 prompt = `${agent.promptTemplate}\n\n---\n\n${originalText}`;
@@ -768,7 +779,7 @@
                 const response = await callGemini(prompt);
                 loadingCard.remove(); // Remove loading indicator
 
-                if (agent.directEdit) {
+                if (agent.directEdit && selectionRange) {
                     quill.deleteText(selectionRange.index, selectionRange.length, 'user');
                     activeSuggestion.originalText = originalText;
                     quill.format('suggestion', true);
