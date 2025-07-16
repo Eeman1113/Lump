@@ -232,7 +232,7 @@
             border-color: var(--accent-color);
             box-shadow: 0 0 0 2px var(--accent-color-light);
         }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @frames fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
         .agent-header {
             display: flex;
@@ -513,7 +513,7 @@
         });
 
         // --- Gemini API & Core Logic ---
-        const API_KEY = ""; // Your API Key here. Leave blank to use the environment's key.
+        const API_KEY = "AIzaSyCYBdYx4vcLbZBXlmJ32EKCCNuKA-TdFoY"; // Your API Key here. Leave blank to use the environment's key.
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
         const showdownConverter = new showdown.Converter();
 
